@@ -374,7 +374,7 @@ class CalendarData:
             if c["type"] == "lesson" and c["belongsToProfiles"][0] == self._childid:
                 event = parseCalendarLesson(c, self._teacher_name_display, self._show_emoji)
                 events.append(event)
-        return events
+        return merge_parallel_lessons(events)
 
     async def async_get_events(self, hass, start_date, end_date):
         # Run file I/O in executor to avoid blocking the event loop
@@ -393,6 +393,48 @@ class CalendarData:
     def update(self):
         _LOGGER.debug("Updating calendars...")
         self.parseCalendarData(self)
+
+
+def merge_parallel_lessons(events):
+    """Collapse lessons with the same subject and time into one event.
+
+    Co-taught or split electives arrive as one lesson per teacher ("Lok.V, TT",
+    "Lok.V, TH", ...). Merge them to "Lok.V, TT/TH" and keep the first room
+    any copy has, so a calendar shows the lesson once.
+    """
+    merged = {}
+    order = []
+    for event in events:
+        subject, _, teacher = event.summary.partition(", ")
+        key = (subject, event.start, event.end)
+        if key not in merged:
+            merged[key] = {"event": event, "teachers": []}
+            order.append(key)
+        entry = merged[key]
+        teacher = teacher.strip()
+        if teacher and teacher not in entry["teachers"]:
+            entry["teachers"].append(teacher)
+        if not entry["event"].location and event.location:
+            entry["event"] = CalendarEvent(
+                summary=entry["event"].summary,
+                start=entry["event"].start,
+                end=entry["event"].end,
+                location=event.location,
+            )
+    result = []
+    for key in order:
+        entry = merged[key]
+        subject = key[0]
+        summary = f"{subject}, {'/'.join(entry['teachers'])}" if entry["teachers"] else subject
+        result.append(
+            CalendarEvent(
+                summary=summary,
+                start=entry["event"].start,
+                end=entry["event"].end,
+                location=entry["event"].location,
+            )
+        )
+    return result
 
 
 def parseCalendarLesson(lesson, teacher_name_display=TEACHER_NAME_INITIALS, show_emoji=False):
