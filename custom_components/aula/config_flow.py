@@ -21,6 +21,7 @@ from .const import (
     TEACHER_NAME_FIRST_NAME_INITIALS,
     TEACHER_NAME_NONE,
     CONF_SCHOOLSCHEDULE_FULL_SUBJECTS,
+    CONF_SCHOOLSCHEDULE_SHOW_ROOM,
     resolve_teacher_name_display,
     CONF_SCHOOLSCHEDULE_EMOJI,
     CONF_MITID_USERNAME,
@@ -73,6 +74,7 @@ SCHOOLSCHEDULE_DISPLAY_SCHEMA = vol.Schema(
         ): vol.In(TEACHER_NAME_DISPLAY_OPTIONS),
         vol.Optional(CONF_SCHOOLSCHEDULE_EMOJI, default=False): cv.boolean,
         vol.Optional(CONF_SCHOOLSCHEDULE_FULL_SUBJECTS, default=False): cv.boolean,
+        vol.Optional(CONF_SCHOOLSCHEDULE_SHOW_ROOM, default=True): cv.boolean,
     }
 )
 
@@ -138,6 +140,9 @@ class AulaCustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ]
             self._feature_flags[CONF_SCHOOLSCHEDULE_FULL_SUBJECTS] = user_input.get(
                 CONF_SCHOOLSCHEDULE_FULL_SUBJECTS, False
+            )
+            self._feature_flags[CONF_SCHOOLSCHEDULE_SHOW_ROOM] = user_input.get(
+                CONF_SCHOOLSCHEDULE_SHOW_ROOM, True
             )
             if self._auth_method == AUTH_METHOD_TOKEN:
                 return await self.async_step_token_credentials()
@@ -409,6 +414,9 @@ class AulaCustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_SCHOOLSCHEDULE_FULL_SUBJECTS: self._reauth_entry.data.get(
                 CONF_SCHOOLSCHEDULE_FULL_SUBJECTS, False
             ),
+            CONF_SCHOOLSCHEDULE_SHOW_ROOM: self._reauth_entry.data.get(
+                CONF_SCHOOLSCHEDULE_SHOW_ROOM, True
+            ),
         }
 
         # Start authentication process
@@ -464,6 +472,9 @@ class AulaCustomConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_SCHOOLSCHEDULE_FULL_SUBJECTS: self._reauth_entry.data.get(
                 CONF_SCHOOLSCHEDULE_FULL_SUBJECTS, False
             ),
+            CONF_SCHOOLSCHEDULE_SHOW_ROOM: self._reauth_entry.data.get(
+                CONF_SCHOOLSCHEDULE_SHOW_ROOM, True
+            ),
         }
 
         # Start authentication process
@@ -518,6 +529,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             self._pending_updates[CONF_SCHOOLSCHEDULE_FULL_SUBJECTS] = user_input.get(
                 CONF_SCHOOLSCHEDULE_FULL_SUBJECTS, False
             )
+            self._pending_updates[CONF_SCHOOLSCHEDULE_SHOW_ROOM] = user_input.get(
+                CONF_SCHOOLSCHEDULE_SHOW_ROOM, True
+            )
             return self._save_options()
 
         current = self.config_entry.data
@@ -534,6 +548,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                 vol.Optional(
                     CONF_SCHOOLSCHEDULE_FULL_SUBJECTS,
                     default=current.get(CONF_SCHOOLSCHEDULE_FULL_SUBJECTS, False),
+                ): cv.boolean,
+                vol.Optional(
+                    CONF_SCHOOLSCHEDULE_SHOW_ROOM,
+                    default=current.get(CONF_SCHOOLSCHEDULE_SHOW_ROOM, True),
                 ): cv.boolean,
             }
         )

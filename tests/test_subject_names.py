@@ -79,3 +79,11 @@ def test_emoji_matches_expanded_name():
     lesson = lesson_with_title("calendar_lesson_normal.json", "DAN")
     event = parseCalendarLesson(lesson, TEACHER_NAME_NONE, show_emoji=True, full_subjects=True)
     assert event.summary == "📖 Dansk"
+
+
+def test_room_is_kept_by_default_and_dropped_when_hidden():
+    lesson = lesson_with_title("calendar_lesson_substitute_with_location.json", "DAN")
+    assert parseCalendarLesson(lesson).location == "Test Location"
+    hidden = parseCalendarLesson(lesson, TEACHER_NAME_NONE, full_subjects=True, show_room=False)
+    assert hidden.location is None
+    assert hidden.summary == "Dansk (vikar)"

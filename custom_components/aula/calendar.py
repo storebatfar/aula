@@ -10,6 +10,7 @@ from .const import (
     TEACHER_NAME_FIRST_NAME_INITIALS,
     TEACHER_NAME_NONE,
     CONF_SCHOOLSCHEDULE_FULL_SUBJECTS,
+    CONF_SCHOOLSCHEDULE_SHOW_ROOM,
     resolve_teacher_name_display,
     get_subject_emoji,
     expand_subject,
@@ -48,6 +49,7 @@ async def async_setup_entry(
     teacher_name_display = resolve_teacher_name_display(config)
     show_emoji = config.get(CONF_SCHOOLSCHEDULE_EMOJI, False)
     full_subjects = config.get(CONF_SCHOOLSCHEDULE_FULL_SUBJECTS, False)
+    show_room = config.get(CONF_SCHOOLSCHEDULE_SHOW_ROOM, True)
 
     calendar_devices = []
     calendar = []
@@ -72,6 +74,7 @@ async def async_setup_entry(
                     teacher_name_display,
                     show_emoji,
                     full_subjects,
+                    show_room,
                 )
             )
 
@@ -123,9 +126,10 @@ class CalendarDevice(CalendarEntity):
         teacher_name_display=TEACHER_NAME_INITIALS,
         show_emoji=False,
         full_subjects=False,
+        show_room=True,
     ):
         self.data = CalendarData(
-            hass, calendar, childid, teacher_name_display, show_emoji, full_subjects
+            hass, calendar, childid, teacher_name_display, show_emoji, full_subjects, show_room
         )
         self._cal_data = {}
         self._name = "Skoleskema " + name
@@ -355,6 +359,7 @@ class CalendarData:
         teacher_name_display=TEACHER_NAME_INITIALS,
         show_emoji=False,
         full_subjects=False,
+        show_room=True,
     ):
         self.event = None
 
@@ -364,6 +369,7 @@ class CalendarData:
         self._teacher_name_display = teacher_name_display
         self._show_emoji = show_emoji
         self._full_subjects = full_subjects
+        self._show_room = show_room
 
         self.all_events = []
         self._client = hass.data[DOMAIN]["client"]
@@ -383,7 +389,11 @@ class CalendarData:
         for c in data["data"]:
             if c["type"] == "lesson" and c["belongsToProfiles"][0] == self._childid:
                 event = parseCalendarLesson(
-                    c, self._teacher_name_display, self._show_emoji, self._full_subjects
+                    c,
+                    self._teacher_name_display,
+                    self._show_emoji,
+                    self._full_subjects,
+                    self._show_room,
                 )
                 events.append(event)
         return merge_parallel_lessons(events)
@@ -450,14 +460,20 @@ def merge_parallel_lessons(events):
 
 
 def parseCalendarLesson(
-    lesson, teacher_name_display=TEACHER_NAME_INITIALS, show_emoji=False, full_subjects=False
+    lesson,
+    teacher_name_display=TEACHER_NAME_INITIALS,
+    show_emoji=False,
+    full_subjects=False,
+    show_room=True,
 ):
     summary = lesson["title"]
     if full_subjects:
         summary = expand_subject(summary)
     start = datetime.strptime(lesson["startDateTime"], "%Y-%m-%dT%H:%M:%S%z")
     end = datetime.strptime(lesson["endDateTime"], "%Y-%m-%dT%H:%M:%S%z")
-    location = (lesson.get("primaryResource", {}) or {}).get("name")
+    # Without a room the lesson matches the homework/ugeplan copy of the same
+    # slot, which lets calendar cards that filter duplicates show it once.
+    location = (lesson.get("primaryResource", {}) or {}).get("name") if show_room else None
     vikar = 0
     for p in lesson["lesson"]["participants"]:
         if p["participantRole"] == "substituteTeacher":

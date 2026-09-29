@@ -44,6 +44,7 @@ def resolve_teacher_name_display(data):
 
 CONF_SCHOOLSCHEDULE_EMOJI = "schoolschedule_emoji"
 CONF_SCHOOLSCHEDULE_FULL_SUBJECTS = "schoolschedule_full_subjects"
+CONF_SCHOOLSCHEDULE_SHOW_ROOM = "schoolschedule_show_room"
 
 # Aula lesson titles are the school's subject codes. Keys are matched
 # case-insensitively; see expand_subject for the suffix rules.

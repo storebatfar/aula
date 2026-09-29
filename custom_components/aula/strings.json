@@ -63,7 +63,8 @@
         "data": {
           "teacher_name_display": "How should teacher names be displayed?",
           "schoolschedule_emoji": "Show emoji icons on schoolschedule events?",
-          "schoolschedule_full_subjects": "Show full subject names (DAN → Dansk)?"
+          "schoolschedule_full_subjects": "Show full subject names (DAN → Dansk)?",
+          "schoolschedule_show_room": "Show the room on lessons?"
         },
         "description": "",
         "title": "Schoolschedule Display"
@@ -96,7 +97,8 @@
         "data": {
           "teacher_name_display": "How should teacher names be displayed?",
           "schoolschedule_emoji": "Show emoji icons on schoolschedule events?",
-          "schoolschedule_full_subjects": "Show full subject names (DAN → Dansk)?"
+          "schoolschedule_full_subjects": "Show full subject names (DAN → Dansk)?",
+          "schoolschedule_show_room": "Show the room on lessons?"
         },
         "description": "",
         "title": "Schoolschedule Display"
