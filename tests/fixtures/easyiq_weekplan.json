@@ -1,0 +1,30 @@
+{
+    "Show": false,
+    "TextId": "",
+    "Text": "",
+    "IsVisible": false,
+    "Beskrivelse": "Generelt om ugen",
+    "WeekPlans": [
+        {
+            "ActivityName": "7A",
+            "Beskrivelse": "Generelt om ugen",
+            "IsVisible": true,
+            "Text": "<p>Vi har projektuge. Deres overordnede emne er \"udvikling\".</p><p>M&oslash;detid hver dag er fra 8.00-13.25.</p><p>Tidslinjen for ugen er f&oslash;lgende:</p><p>MANDAG Emnevalg + problemformulering</p>",
+            "TextId": "1930d2e8-6c7e-4129-871c-a5543735fd79"
+        },
+        {
+            "ActivityName": "7B",
+            "Beskrivelse": "Generelt om ugen",
+            "IsVisible": false,
+            "Text": "<p>Skjult tekst</p>",
+            "TextId": "hidden"
+        },
+        {
+            "ActivityName": "Musik",
+            "Beskrivelse": "Generelt om ugen",
+            "IsVisible": true,
+            "Text": "",
+            "TextId": "empty"
+        }
+    ]
+}

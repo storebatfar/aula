@@ -155,6 +155,61 @@ def summarize_weekplan_items(items):
     return {"count": sum(types.values()), "types": types, "notices": notices}
 
 
+def extract_week_notes(payload):
+    """Visible "Generelt om ugen" texts from a /Calendar/WeekPlan payload.
+
+    The payload carries an (often empty) top-level Text plus one WeekPlans
+    entry per class/activity; each has its own Text (HTML) and IsVisible.
+    """
+    if not isinstance(payload, dict):
+        return []
+    candidates = []
+    if payload.get("IsVisible") or payload.get("Show"):
+        candidates.append(payload)
+    week_plans = payload.get("WeekPlans")
+    if isinstance(week_plans, list):
+        candidates.extend(
+            plan for plan in week_plans if isinstance(plan, dict) and plan.get("IsVisible", True)
+        )
+    notes = []
+    for plan in candidates:
+        text = (plan.get("Text") or "").strip()
+        if not text or not BeautifulSoup(text, "html.parser").get_text(strip=True):
+            continue
+        notes.append(
+            {
+                "activity": (plan.get("ActivityName") or "").strip(),
+                "heading": (plan.get("Beskrivelse") or "").strip() or "Generelt om ugen",
+                "html": text,
+            }
+        )
+    return notes
+
+
+def build_week_note_events(payload, week_monday):
+    """One all-day Monday-Friday CalendarEvent per visible week note."""
+    notes = extract_week_notes(payload)
+    events = []
+    for note in notes:
+        lines = [
+            line.strip()
+            for line in BeautifulSoup(note["html"], "html.parser").get_text("\n").splitlines()
+            if line.strip()
+        ]
+        summary = extract_ugeplan_notice_title(note["html"]) or note["heading"]
+        if len(notes) > 1 and note["activity"]:
+            summary = f"{note['activity']}: {summary}"
+        events.append(
+            CalendarEvent(
+                summary=summary,
+                start=week_monday,
+                end=week_monday + datetime.timedelta(days=5),
+                description="\n".join(lines) or None,
+            )
+        )
+    return events
+
+
 # EasyIQ SkolePortal "Lektier" widget. Same host as the EasyIQ Ugeplan widget,
 # but its own controller (/AulaHuskeliste), keyed on SkolePortal's internal
 # child id - which only /Aula/GetChildren returns.
@@ -1430,6 +1485,7 @@ class Client:
                         login_id = None
                         activity_filter = None
                         events_list = []
+                        week_plan_payload = None
                         skoleportal_success = False
                         skoleportal_auth_response = False
 
@@ -1524,12 +1580,34 @@ class Client:
                                         _LOGGER.debug("Could not parse events JSON for %s: %s (text: %r)", first_name, json_e, events_resp.text[:200])
                                 else:
                                     _LOGGER.debug("EasyIQ Skoleportal returned non-200 response for %s: %r", first_name, events_resp.text[:200])
+
+                                # "Generelt om ugen" is not an event; the widget
+                                # loads it separately from /Calendar/WeekPlan.
+                                try:
+                                    week_plan_resp = easyiq_session.get(
+                                        EASYIQ_SKOLEPORTAL_API + "/Calendar/WeekPlan",
+                                        headers=easyiq_headers,
+                                        params={
+                                            "loginId": str(login_id),
+                                            "activityFilter": params["activityFilter"],
+                                            "date": target_date,
+                                        },
+                                        verify=True,
+                                        timeout=10,
+                                    )
+                                    _LOGGER.debug("EasyIQ Skoleportal week plan status %s for %s week %s: %r", week_plan_resp.status_code, first_name, week, week_plan_resp.text[:1000])
+                                    if week_plan_resp.status_code == 200:
+                                        week_plan_payload = week_plan_resp.json()
+                                except (requests.RequestException, ValueError) as err:
+                                    _LOGGER.debug("Could not fetch EasyIQ week plan note for %s: %s", first_name, err)
                         except Exception as err:
                             _LOGGER.warning("EasyIQ Skoleportal API call failed for %s: %s", first_name, err)
 
                         if skoleportal_success:
                             week_num_str = week.split("-W")[-1] if "-W" in week else week
                             _ugep = f"<h2>Uge {week_num_str}</h2>"
+                            for week_note in extract_week_notes(week_plan_payload):
+                                _ugep += f"<h3>{week_note['heading']}</h3>{week_note['html']}"
 
                             events_by_day = {}
                             important_notes = []
@@ -1663,6 +1741,15 @@ class Client:
                                         end=ev_end,
                                         description=item_desc or None,
                                     )
+                                )
+                            try:
+                                y, w = week.split("-W")
+                                week_monday = datetime.date.fromisocalendar(int(y), int(w), 1)
+                            except ValueError:
+                                week_monday = None
+                            if week_monday is not None:
+                                self.ugep_events[first_name].extend(
+                                    build_week_note_events(week_plan_payload, week_monday)
                                 )
                             _LOGGER.debug("EasyIQ Skoleportal result for %s: %s", first_name, _ugep)
                         elif not skoleportal_auth_response:
