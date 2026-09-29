@@ -11,6 +11,7 @@ from custom_components.aula.client import (
     LEKTIER_WIDGET,
     build_lektier_event,
     build_lektier_events,
+    description_unless_repeat,
     easyiq_activity_filter,
     summarize_weekplan_items,
 )
@@ -64,11 +65,42 @@ def test_blank_chapter_falls_back_to_course(items):
     assert event.description == "Opgave 4.1 til 4.6"
 
 
-def test_midnight_times_become_all_day_with_generic_title(items):
+def test_note_without_course_or_chapter_is_titled_by_its_text(items):
     event = build_lektier_event(items[2], MONDAY)
-    assert event.summary == "Lektier"
+    assert event.summary == "Husk idrætstøj"
+    assert event.description is None
     assert event.start == datetime.date(2026, 10, 5)
     assert event.end == datetime.date(2026, 10, 6)
+
+
+def test_timed_note_without_course_is_all_day_like_the_ugeplan():
+    # The same reminder arrives from the ugeplan as an all-day notice titled by
+    # its text; matching it lets calendar-card-pro merge the two copies.
+    item = {
+        "StartTime": "2026-10-08T08:00:00",
+        "EndTime": "2026-10-08T08:45:00",
+        "CoursesDisplay": "",
+        "Title": " ",
+        "ChapterTitle": None,
+        "ItemType": 4,
+        "Description": "Husk aflevering af dansk p&aring; classroom",
+    }
+    event = build_lektier_event(item, MONDAY)
+    assert event.summary == "Husk aflevering af dansk på classroom"
+    assert event.description is None
+    assert event.start == datetime.date(2026, 10, 8)
+    assert event.end == datetime.date(2026, 10, 9)
+
+
+def test_empty_note_gets_generic_title():
+    event = build_lektier_event({"StartTime": "2026/10/05 00:00", "Description": ""}, MONDAY)
+    assert event.summary == "Lektier"
+
+
+def test_description_repeating_the_title_is_dropped():
+    assert description_unless_repeat("Husk idrætstøj", "Husk  idrætstøj ") is None
+    assert description_unless_repeat("Dansk", "Læs side 12") == "Læs side 12"
+    assert description_unless_repeat("Dansk", "") is None
 
 
 def test_iso_utc_time_is_converted_to_local(items):

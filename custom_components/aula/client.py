@@ -116,6 +116,19 @@ def is_ugeplan_all_day(value):
     return value == 1
 
 
+def description_unless_repeat(title, description):
+    """The description, or None when it only repeats the title.
+
+    Notes without a subject are titled by their own text, so title and
+    description are then the same sentence twice.
+    """
+    if not description:
+        return None
+    if " ".join(description.split()) == " ".join((title or "").split()):
+        return None
+    return description
+
+
 def easyiq_activity_filter(auth_value):
     """activityFilter for CalendarGetWeekplanEvents.
 
@@ -260,15 +273,21 @@ def build_lektier_event(item, week_monday):
     chapter = html.unescape(
         (item.get("ChapterTitle") or "").strip() or (item.get("Title") or "").strip()
     )
+    raw_desc = item.get("Description") or ""
+    # A note without a subject is handled like the ugeplan does it: titled by
+    # its own text and all-day. The same note also arrives through the ugeplan,
+    # and identical title + time is what lets calendar-card-pro merge the two.
+    is_notice = not course
     if course and chapter and chapter != course:
         summary = f"{course}: {chapter}"
+    elif course:
+        summary = course
     else:
-        summary = course or chapter or "Lektier"
+        summary = chapter or extract_ugeplan_notice_title(raw_desc) or "Lektier"
 
-    raw_desc = item.get("Description") or ""
-    description = " ".join(
-        BeautifulSoup(raw_desc, "html.parser").get_text(" ").split()
-    ) or None
+    description = description_unless_repeat(
+        summary, " ".join(BeautifulSoup(raw_desc, "html.parser").get_text(" ").split())
+    )
 
     start = _parse_easyiq_datetime(item.get("StartTime")) or _parse_easyiq_datetime(
         item.get("StartTimeISO")
@@ -289,7 +308,7 @@ def build_lektier_event(item, week_monday):
     at_midnight = start.hour == 0 and start.minute == 0
     if end is not None:
         at_midnight = at_midnight and end.hour == 0 and end.minute == 0
-    if is_ugeplan_all_day(item.get("IsAllDay")) or at_midnight:
+    if is_notice or is_ugeplan_all_day(item.get("IsAllDay")) or at_midnight:
         first = start.date()
         last = end.date() if end is not None and end.date() > first else first
         return CalendarEvent(
@@ -1747,7 +1766,7 @@ class Client:
                                         summary=summary,
                                         start=ev_start,
                                         end=ev_end,
-                                        description=item_desc or None,
+                                        description=description_unless_repeat(item_title, item_desc),
                                     )
                                 )
                             try:
