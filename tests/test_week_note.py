@@ -28,13 +28,16 @@ def test_note_becomes_monday_to_friday_all_day_event():
     assert event.summary == 'Vi har projektuge. Deres overordnede emne er "udvikling".'
 
 
-def test_note_description_is_plain_text_one_paragraph_per_line():
+def test_note_description_has_one_line_per_paragraph_and_table_cell():
     event = build_week_note_events(load_json_fixture("easyiq_weekplan.json"), MONDAY)[0]
     assert event.description.splitlines() == [
         'Vi har projektuge. Deres overordnede emne er "udvikling".',
         "Mødetid hver dag er fra 8.00-13.25.",
         "Tidslinjen for ugen er følgende:",
-        "MANDAG Emnevalg + problemformulering",
+        "📅 TIDSLINJE FOR PROJEKTUGEN",
+        "📌 MANDAG Emnevalg + problemformulering",
+        "🔎 TIRSDAG Undersøgelser + informationssøgning",
+        "Det er muligt for eleverne at arbejde på tværs af årgangen.",
     ]
 
 
@@ -59,3 +62,10 @@ def test_missing_or_odd_payload_gives_no_events():
     assert build_week_note_events(None, MONDAY) == []
     assert build_week_note_events([], MONDAY) == []
     assert build_week_note_events({"WeekPlans": "nope"}, MONDAY) == []
+
+
+def test_nested_table_cells_collapse_without_error():
+    from custom_components.aula.client import html_to_lines
+
+    html = "<table><tr><td><p>Ydre</p><table><tr><td><p>Indre</p><p>celle</p></td></tr></table></td></tr></table>"
+    assert html_to_lines(html) == ["Ydre Indre celle"]

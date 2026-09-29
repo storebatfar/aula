@@ -155,6 +155,18 @@ def summarize_weekplan_items(items):
     return {"count": sum(types.values()), "types": types, "notices": notices}
 
 
+def html_to_lines(html_text):
+    """Plain-text lines for an HTML note: one per paragraph, one per table cell.
+
+    Teachers paste timelines as tables with a paragraph per icon/day/topic;
+    collapsing each cell keeps "📌 MANDAG Emnevalg" on one line instead of three.
+    """
+    soup = BeautifulSoup(html_text or "", "html.parser")
+    for cell in reversed(soup.find_all(["td", "th"])):  # innermost first
+        cell.replace_with(soup.new_string(" ".join(cell.stripped_strings)))
+    return [line.strip() for line in soup.get_text("\n").splitlines() if line.strip()]
+
+
 def extract_week_notes(payload):
     """Visible "Generelt om ugen" texts from a /Calendar/WeekPlan payload.
 
@@ -191,11 +203,7 @@ def build_week_note_events(payload, week_monday):
     notes = extract_week_notes(payload)
     events = []
     for note in notes:
-        lines = [
-            line.strip()
-            for line in BeautifulSoup(note["html"], "html.parser").get_text("\n").splitlines()
-            if line.strip()
-        ]
+        lines = html_to_lines(note["html"])
         summary = extract_ugeplan_notice_title(note["html"]) or note["heading"]
         if len(notes) > 1 and note["activity"]:
             summary = f"{note['activity']}: {summary}"
