@@ -8,8 +8,11 @@ from .const import (
     TEACHER_NAME_INITIALS,
     TEACHER_NAME_FULL,
     TEACHER_NAME_FIRST_NAME_INITIALS,
+    TEACHER_NAME_NONE,
+    CONF_SCHOOLSCHEDULE_FULL_SUBJECTS,
     resolve_teacher_name_display,
     get_subject_emoji,
+    expand_subject,
 )
 from homeassistant import config_entries, core
 from homeassistant.components.calendar import (
@@ -44,6 +47,7 @@ async def async_setup_entry(
     client = hass.data[DOMAIN]["client"]
     teacher_name_display = resolve_teacher_name_display(config)
     show_emoji = config.get(CONF_SCHOOLSCHEDULE_EMOJI, False)
+    full_subjects = config.get(CONF_SCHOOLSCHEDULE_FULL_SUBJECTS, False)
 
     calendar_devices = []
     calendar = []
@@ -67,6 +71,7 @@ async def async_setup_entry(
                     childid,
                     teacher_name_display,
                     show_emoji,
+                    full_subjects,
                 )
             )
 
@@ -117,8 +122,11 @@ class CalendarDevice(CalendarEntity):
         childid,
         teacher_name_display=TEACHER_NAME_INITIALS,
         show_emoji=False,
+        full_subjects=False,
     ):
-        self.data = CalendarData(hass, calendar, childid, teacher_name_display, show_emoji)
+        self.data = CalendarData(
+            hass, calendar, childid, teacher_name_display, show_emoji, full_subjects
+        )
         self._cal_data = {}
         self._name = "Skoleskema " + name
         self._childid = childid
@@ -346,6 +354,7 @@ class CalendarData:
         childid,
         teacher_name_display=TEACHER_NAME_INITIALS,
         show_emoji=False,
+        full_subjects=False,
     ):
         self.event = None
 
@@ -354,6 +363,7 @@ class CalendarData:
         self._childid = childid
         self._teacher_name_display = teacher_name_display
         self._show_emoji = show_emoji
+        self._full_subjects = full_subjects
 
         self.all_events = []
         self._client = hass.data[DOMAIN]["client"]
@@ -372,7 +382,9 @@ class CalendarData:
         _LOGGER.debug("Parsing skoleskema.json...")
         for c in data["data"]:
             if c["type"] == "lesson" and c["belongsToProfiles"][0] == self._childid:
-                event = parseCalendarLesson(c, self._teacher_name_display, self._show_emoji)
+                event = parseCalendarLesson(
+                    c, self._teacher_name_display, self._show_emoji, self._full_subjects
+                )
                 events.append(event)
         return merge_parallel_lessons(events)
 
@@ -437,8 +449,12 @@ def merge_parallel_lessons(events):
     return result
 
 
-def parseCalendarLesson(lesson, teacher_name_display=TEACHER_NAME_INITIALS, show_emoji=False):
+def parseCalendarLesson(
+    lesson, teacher_name_display=TEACHER_NAME_INITIALS, show_emoji=False, full_subjects=False
+):
     summary = lesson["title"]
+    if full_subjects:
+        summary = expand_subject(summary)
     start = datetime.strptime(lesson["startDateTime"], "%Y-%m-%dT%H:%M:%S%z")
     end = datetime.strptime(lesson["endDateTime"], "%Y-%m-%dT%H:%M:%S%z")
     location = (lesson.get("primaryResource", {}) or {}).get("name")
@@ -472,8 +488,12 @@ def parseCalendarLesson(lesson, teacher_name_display=TEACHER_NAME_INITIALS, show
                 teacher = ""
     if show_emoji:
         summary = f"{get_subject_emoji(summary)} {summary}"
+    if teacher_name_display == TEACHER_NAME_NONE:
+        summary = f"{summary} (vikar)" if vikar else str(summary)
+    else:
+        summary = str(summary) + ", " + str(teacher)
     lesson = CalendarEvent(
-        summary=str(summary) + ", " + str(teacher),
+        summary=summary,
         start=start,
         end=end,
         location=location,

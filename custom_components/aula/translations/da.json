@@ -52,7 +52,8 @@
       "schoolschedule_display": {
         "data": {
           "teacher_name_display": "Hvordan skal lærernavne vises?",
-          "schoolschedule_emoji": "Vis emoji-ikoner på skoleskema-begivenheder?"
+          "schoolschedule_emoji": "Vis emoji-ikoner på skoleskema-begivenheder?",
+          "schoolschedule_full_subjects": "Vis fagnavne fuldt ud (DAN → Dansk)?"
         },
         "description": "",
         "title": "Skoleskema-visning"
@@ -84,7 +85,8 @@
       "schoolschedule_display": {
         "data": {
           "teacher_name_display": "Hvordan skal lærernavne vises?",
-          "schoolschedule_emoji": "Vis emoji-ikoner på skoleskema-begivenheder?"
+          "schoolschedule_emoji": "Vis emoji-ikoner på skoleskema-begivenheder?",
+          "schoolschedule_full_subjects": "Vis fagnavne fuldt ud (DAN → Dansk)?"
         },
         "description": "",
         "title": "Skoleskema-visning"

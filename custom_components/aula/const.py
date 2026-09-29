@@ -1,3 +1,4 @@
+import re
 from collections import namedtuple
 
 STARTUP = r"""
@@ -30,6 +31,7 @@ CONF_TEACHER_NAME_DISPLAY = "teacher_name_display"
 TEACHER_NAME_INITIALS = "initials"
 TEACHER_NAME_FULL = "full_name"
 TEACHER_NAME_FIRST_NAME_INITIALS = "first_name_initials"
+TEACHER_NAME_NONE = "none"
 
 
 def resolve_teacher_name_display(data):
@@ -41,6 +43,58 @@ def resolve_teacher_name_display(data):
 
 
 CONF_SCHOOLSCHEDULE_EMOJI = "schoolschedule_emoji"
+CONF_SCHOOLSCHEDULE_FULL_SUBJECTS = "schoolschedule_full_subjects"
+
+# Aula lesson titles are the school's subject codes. Keys are matched
+# case-insensitively; see expand_subject for the suffix rules.
+SUBJECT_NAMES = {
+    "DAN": "Dansk",
+    "MAT": "Matematik",
+    "ENG": "Engelsk",
+    "TYS": "Tysk",
+    "FRA": "Fransk",
+    "SPA": "Spansk",
+    "HIS": "Historie",
+    "SAM": "Samfundsfag",
+    "KRI": "Kristendomskundskab",
+    "GEO": "Geografi",
+    "BIO": "Biologi",
+    "F/K": "Fysik/kemi",
+    "FYS": "Fysik/kemi",
+    "N/T": "Natur/teknologi",
+    "NT": "Natur/teknologi",
+    "IDR": "Idræt",
+    "MUS": "Musik",
+    "BIL": "Billedkunst",
+    "H/D": "Håndværk og design",
+    "HD": "Håndværk og design",
+    "MAD": "Madkundskab",
+    "LÆS": "Læsebånd",
+    "KLA": "Klassens tid",
+    "UEA": "Uddannelse og job",
+    "SVØ": "Svømning",
+    "TIL": "Tilvalgsfag",
+    "VAL": "Valgfag",
+    "LOK.V": "Lokalt valgfag",
+}
+
+
+def expand_subject(title):
+    """Full subject name for an Aula subject code; unknown titles are returned unchanged.
+
+    A trailing digit is a parallel team or second teacher (DAN2 is Dansk), and
+    a trailing lowercase "v" marks the elective version (MUSv is Musik (valgfag)).
+    """
+    code = (title or "").strip()
+    name = SUBJECT_NAMES.get(code.upper())
+    if name:
+        return name
+    team = re.match(r"^(.*?)\d+$", code)
+    if team and team.group(1).upper() in SUBJECT_NAMES:
+        return SUBJECT_NAMES[team.group(1).upper()]
+    if code.endswith("v") and code[:-1].upper() in SUBJECT_NAMES:
+        return f"{SUBJECT_NAMES[code[:-1].upper()]} (valgfag)"
+    return code
 
 SUBJECT_EMOJIS = {
     "dansk": "📖",
