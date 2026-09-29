@@ -2,6 +2,12 @@
 
 # Aula
 
+> **Fork of [scaarup/aula](https://github.com/scaarup/aula)** that adds homework from the
+> **EasyIQ Lektier** widget (`0142`) as one `calendar.lektier_<child>` per child, next to the
+> existing `calendar.ugeplan_<child>`. It is a drop-in replacement (same `aula` domain), so it
+> must never be installed alongside the original. Versions use CalVer (`v2026.N`), a separate
+> track from upstream's `0.1.x`.
+
 This is a custom component for Home Assistant to integrate Aula.
 
 - Installable and updatable via HACS
@@ -9,6 +15,7 @@ This is a custom component for Home Assistant to integrate Aula.
 - School schedules as Home Assistant calendars
 - "Ugeplaner/Ugenoter" from "Min Uddannelse", "Meebook" and "EasyIQ"
 - "Opgaver" from "Min Uddannelse"
+- "Lektier" (homework) from "EasyIQ" as a calendar per child
 - Messages - if there are unread messages, we turn a binary sensor on and populate it with the message details.
 - "Huskelisten" from "Systematic"
 - Use the builtin service to interact directly with Aulas API.
