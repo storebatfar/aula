@@ -116,12 +116,112 @@ def is_ugeplan_all_day(value):
     return value == 1
 
 
+# EasyIQ SkolePortal "Lektier" widget. Same host as the EasyIQ Ugeplan widget,
+# but its own controller (/AulaHuskeliste), keyed on SkolePortal's internal
+# child id - which only /Aula/GetChildren returns.
+LEKTIER_WIDGET = "0142"
+
+
+def _parse_easyiq_datetime(value):
+    """Return an aware local datetime for an EasyIQ timestamp, or None.
+
+    StartTime/EndTime are local wall-clock ("2026/10/01 08:25"), while the
+    *ISO variants may carry a UTC offset, so an aware value is converted
+    rather than having its offset stripped.
+    """
+    if not value or not isinstance(value, str):
+        return None
+    text = value.strip()
+    try:
+        parsed = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        parsed = None
+        for fmt in ("%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M", "%Y/%m/%d"):
+            try:
+                parsed = datetime.datetime.strptime(text, fmt)
+                break
+            except ValueError:
+                pass
+        if parsed is None:
+            return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=dt_util.DEFAULT_TIME_ZONE)
+    return parsed.astimezone(dt_util.DEFAULT_TIME_ZONE)
+
+
+def build_lektier_event(item, week_monday):
+    """Turn one EasyIQ Lektier item into a CalendarEvent (None if unusable)."""
+    if not isinstance(item, dict):
+        return None
+    course = html.unescape(item.get("CoursesDisplay") or "").strip()
+    # Title is usually blank whitespace; ChapterTitle carries the topic.
+    chapter = html.unescape(
+        (item.get("ChapterTitle") or "").strip() or (item.get("Title") or "").strip()
+    )
+    if course and chapter and chapter != course:
+        summary = f"{course}: {chapter}"
+    else:
+        summary = course or chapter or "Lektier"
+
+    raw_desc = item.get("Description") or ""
+    description = " ".join(
+        BeautifulSoup(raw_desc, "html.parser").get_text(" ").split()
+    ) or None
+
+    start = _parse_easyiq_datetime(item.get("StartTime")) or _parse_easyiq_datetime(
+        item.get("StartTimeISO")
+    )
+    end = _parse_easyiq_datetime(item.get("EndTime")) or _parse_easyiq_datetime(
+        item.get("EndTimeISO")
+    )
+    one_day = datetime.timedelta(days=1)
+
+    if start is None:
+        return CalendarEvent(
+            summary=summary,
+            start=week_monday,
+            end=week_monday + one_day,
+            description=description,
+        )
+
+    at_midnight = start.hour == 0 and start.minute == 0
+    if end is not None:
+        at_midnight = at_midnight and end.hour == 0 and end.minute == 0
+    if is_ugeplan_all_day(item.get("IsAllDay")) or at_midnight:
+        first = start.date()
+        last = end.date() if end is not None and end.date() > first else first
+        return CalendarEvent(
+            summary=summary, start=first, end=last + one_day, description=description
+        )
+
+    if end is None or end <= start:
+        end = start + datetime.timedelta(hours=1)
+    return CalendarEvent(summary=summary, start=start, end=end, description=description)
+
+
+def build_lektier_events(items, week_monday):
+    """Build CalendarEvents for a week of Lektier items, dropping exact repeats."""
+    events = []
+    seen = set()
+    for item in items or []:
+        event = build_lektier_event(item, week_monday)
+        if event is None:
+            continue
+        key = (event.summary, event.start, event.end, event.description)
+        if key in seen:
+            continue
+        seen.add(key)
+        events.append(event)
+    return events
+
+
 class Client:
     huskeliste = {}
     presence = {}
     ugep_attr = {}
     ugepnext_attr = {}
     ugep_events = {}
+    lektier_events = {}
     mu_opgaver_attr = {}
     mu_opgaver_next_attr = {}
     widgets = {}
@@ -697,6 +797,115 @@ class Client:
         token = "Bearer " + str(self._bearertoken)
         self.tokens[widgetid] = (token, datetime.datetime.now(pytz.utc))
         return token
+
+    def update_easyiq_lektier(self, guardian):
+        """Fetch EasyIQ Lektier (homework) for this week and next, per child.
+
+        The flow differs from EasyIQ Ugeplan in ways that are all load-bearing:
+        the referer must be /LektierWidget (anything else is a 302 to /Login),
+        the session is authenticated once as the first child, and the events
+        endpoint wants SkolePortal's own child id from /Aula/GetChildren -
+        reusing the loginId from AuthenticateAulaUser returns 200 [] for every
+        child, indistinguishable from "no homework".
+
+        A child whose fetch fails keeps its previous events.
+        """
+        if LEKTIER_WIDGET not in self.widgets or not self._childuserids:
+            return
+        token = self.get_token(LEKTIER_WIDGET)
+        if not token:
+            return
+
+        child_filter = ",".join(str(u) for u in self._childuserids)
+
+        def headers(child_login):
+            return {
+                "Accept": "*/*",
+                "Authorization": token,
+                "Origin": EASYIQ_SKOLEPORTAL_API,
+                "Referer": EASYIQ_SKOLEPORTAL_API + "/LektierWidget",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+                "X-Child": str(child_login),
+                "X-ChildFilter": child_filter,
+                "X-InstitutionFilter": ",".join(self._institutionProfiles),
+                "X-Login": guardian,
+                "X-Requested-With": "Fetch",
+                "X-UserProfile": "guardian",
+            }
+
+        session = requests.Session()
+        first_child = str(self._childuserids[0])
+        try:
+            auth = session.post(
+                EASYIQ_SKOLEPORTAL_API + "/Aula/AuthenticateAulaUser",
+                headers={**headers(first_child), "Content-Length": "0"},
+                allow_redirects=False,
+                verify=True,
+                timeout=10,
+            )
+            _LOGGER.debug("EasyIQ Lektier auth status %s: %r", auth.status_code, auth.text[:300])
+            if auth.status_code != 200:
+                _LOGGER.warning("EasyIQ Lektier authentication failed with status %s", auth.status_code)
+                return
+            children = session.get(
+                EASYIQ_SKOLEPORTAL_API + "/Aula/GetChildren",
+                headers=headers(first_child),
+                allow_redirects=False,
+                verify=True,
+                timeout=10,
+            )
+            _LOGGER.debug("EasyIQ Lektier children status %s: %r", children.status_code, children.text[:500])
+            roster = []
+            if children.status_code == 200:
+                roster = (children.json() or {}).get("Children") or []
+        except (requests.RequestException, ValueError, AttributeError) as err:
+            _LOGGER.warning("EasyIQ Lektier could not be reached: %s", err)
+            return
+
+        ids_by_login = {
+            str(row["Login"]): row["Id"]
+            for row in roster
+            if isinstance(row, dict) and row.get("Login") and row.get("Id") is not None
+        }
+        today = datetime.date.today()
+        this_monday = today - datetime.timedelta(days=today.weekday())
+        mondays = [this_monday, this_monday + datetime.timedelta(weeks=1)]
+
+        for child_login, first_name in self._childrenFirstNamesAndUserIDs.items():
+            sp_child_id = ids_by_login.get(str(child_login))
+            if sp_child_id is None:
+                _LOGGER.debug("EasyIQ Lektier has no access to %s (not in GetChildren)", first_name)
+                continue
+            events = []
+            try:
+                for monday in mondays:
+                    resp = session.get(
+                        EASYIQ_SKOLEPORTAL_API + "/AulaHuskeliste/GetWeekplanEvents",
+                        params={
+                            "loginId": str(sp_child_id),
+                            # A plain YYYY-MM-DD is accepted and silently returns nothing.
+                            "date": monday.isoformat() + "T00:00:00.000Z",
+                            "activityFilter": "null",
+                        },
+                        headers=headers(child_login),
+                        allow_redirects=False,
+                        verify=True,
+                        timeout=10,
+                    )
+                    _LOGGER.debug(
+                        "EasyIQ Lektier %s week of %s: status %s, %r",
+                        first_name, monday, resp.status_code, resp.text[:2000],
+                    )
+                    if resp.status_code != 200:
+                        raise ValueError(f"status {resp.status_code}")
+                    payload = resp.json()
+                    events.extend(
+                        build_lektier_events(payload if isinstance(payload, list) else [], monday)
+                    )
+            except (requests.RequestException, ValueError) as err:
+                _LOGGER.warning("Could not fetch EasyIQ Lektier for %s: %s", first_name, err)
+                continue
+            self.lektier_events[first_name] = events
 
     def _ensure_valid_token(self):
         """Ensure we have a valid access token, refresh if needed.
@@ -1752,5 +1961,9 @@ class Client:
             ugeplan(thisweek, "this")
             ugeplan(nextweek, "next")
             # _LOGGER.debug("End result of ugeplan object: "+str(self.ugep_attr))
+            try:
+                self.update_easyiq_lektier(guardian)
+            except Exception:
+                _LOGGER.exception("Unexpected error while fetching EasyIQ Lektier")
         # End of Ugeplaner
         return True

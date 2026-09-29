@@ -33,7 +33,7 @@ async def async_setup_entry(
     config = hass.data[DOMAIN][config_entry.entry_id]
     if config_entry.options:
         config.update(config_entry.options)
-    from .client import Client
+    from .client import Client, LEKTIER_WIDGET
 
     schoolschedule_enabled = config.get(CONF_SCHOOLSCHEDULE, True)
     ugeplan_enabled = config.get(CONF_UGEPLAN, True)
@@ -97,6 +97,14 @@ async def async_setup_entry(
                     childid,
                 )
             )
+            if LEKTIER_WIDGET in client.widgets:
+                calendar_devices.append(
+                    LektierCalendarDevice(
+                        hass,
+                        name,
+                        childid,
+                    )
+                )
 
     async_add_entities(calendar_devices)
 
@@ -434,6 +442,9 @@ def parseCalendarLesson(lesson, teacher_name_display=TEACHER_NAME_INITIALS, show
 class UgeplanCalendarDevice(CalendarEntity):
     """Calendar entity representing a child's weekly plan (Ugeplan)."""
 
+    # Name of the Client dict (first name -> [CalendarEvent]) this calendar shows.
+    _events_attr = "ugep_events"
+
     def __init__(
         self,
         hass,
@@ -479,8 +490,11 @@ class UgeplanCalendarDevice(CalendarEntity):
             end_date,
         )
 
+    def _all_events(self):
+        return getattr(self._client, self._events_attr, {}).get(self._first_name, [])
+
     def _get_events_for_period(self, start_date, end_date):
-        all_events = self._client.ugep_events.get(self._first_name, [])
+        all_events = self._all_events()
         filtered = []
 
         for ev in all_events:
@@ -520,7 +534,7 @@ class UgeplanCalendarDevice(CalendarEntity):
 
     def _find_next_event(self):
         now = datetime.now()
-        events = self._client.ugep_events.get(self._first_name, [])
+        events = self._all_events()
         upcoming = []
         for ev in events:
             ev_start = ev.start
@@ -538,3 +552,18 @@ class UgeplanCalendarDevice(CalendarEntity):
             upcoming.sort(key=self._event_sort_key)
             return upcoming[0]
         return None
+
+
+class LektierCalendarDevice(UgeplanCalendarDevice):
+    """Calendar entity with a child's homework from EasyIQ Lektier."""
+
+    _events_attr = "lektier_events"
+
+    def __init__(self, hass, child_name, childid):
+        super().__init__(hass, child_name, childid)
+        self._name = "Lektier " + self._first_name
+
+    @property
+    def unique_id(self):
+        """Return unique entity ID."""
+        return "aula_lektier_" + str(self._childid)
