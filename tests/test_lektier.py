@@ -11,6 +11,8 @@ from custom_components.aula.client import (
     LEKTIER_WIDGET,
     build_lektier_event,
     build_lektier_events,
+    easyiq_activity_filter,
+    summarize_weekplan_items,
 )
 from custom_components.aula.const import DOMAIN
 
@@ -110,3 +112,33 @@ def test_calendar_reads_lektier_events(items):
         local(2026, 10, 2, 0, 0), local(2026, 10, 3, 0, 0)
     )
     assert [e.summary for e in found] == ["Matematik"]
+
+
+def test_activity_filter_defaults_to_all():
+    assert easyiq_activity_filter(None) == "-1"
+    assert easyiq_activity_filter("") == "-1"
+
+
+def test_activity_filter_keeps_value_from_auth():
+    assert easyiq_activity_filter(1234) == "1234"
+
+
+def test_weekplan_summary_counts_types_and_lists_notices():
+    items = [
+        {"ItemType": 9, "CoursesDisplay": "Dansk", "StartTime": "2026-09-28T10:25:00"},
+        {"ItemType": 9, "CoursesDisplay": "Tysk", "StartTime": "2026-09-30T10:25:00"},
+        {
+            "ItemType": 8,
+            "CoursesDisplay": "",
+            "Title": "Projektuge",
+            "StartTime": "2026-09-28T00:00:00",
+            "Description": "<p>Hele ugen er projektuge</p>",
+        },
+        "nonsense",
+    ]
+    summary = summarize_weekplan_items(items)
+    assert summary["count"] == 3
+    assert summary["types"] == {"9": 2, "8": 1}
+    assert summary["notices"] == [
+        {"type": 8, "start": "2026-09-28T00:00:00", "title": "Projektuge", "text": "Hele ugen er projektuge"}
+    ]

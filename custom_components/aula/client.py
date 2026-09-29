@@ -116,6 +116,45 @@ def is_ugeplan_all_day(value):
     return value == 1
 
 
+def easyiq_activity_filter(auth_value):
+    """activityFilter for CalendarGetWeekplanEvents.
+
+    AuthenticateAulaUser does not always return one, and leaving the parameter
+    out is not documented to mean "everything". "-1" is what the SkolePortal
+    widget and other clients send for no filter.
+    """
+    return str(auth_value) if auth_value else "-1"
+
+
+def summarize_weekplan_items(items):
+    """Compact debug view of a CalendarGetWeekplanEvents payload.
+
+    Counts items per ItemType and lists every item without a course - the
+    week notes and "vigtig information" rows that are easy to lose.
+    """
+    types = {}
+    notices = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("ItemType")
+        types[str(item_type)] = types.get(str(item_type), 0) + 1
+        if (item.get("CoursesDisplay") or "").strip():
+            continue
+        text = " ".join(
+            BeautifulSoup(item.get("Description") or "", "html.parser").get_text(" ").split()
+        )
+        notices.append(
+            {
+                "type": item_type,
+                "start": item.get("StartTime"),
+                "title": (item.get("Title") or item.get("ChapterTitle") or "").strip(),
+                "text": text[:200],
+            }
+        )
+    return {"count": sum(types.values()), "types": types, "notices": notices}
+
+
 # EasyIQ SkolePortal "Lektier" widget. Same host as the EasyIQ Ugeplan widget,
 # but its own controller (/AulaHuskeliste), keyed on SkolePortal's internal
 # child id - which only /Aula/GetChildren returns.
@@ -1450,8 +1489,7 @@ class Client:
                                     "textFilter": "",
                                     "ownWeekPlan": "false",
                                 }
-                                if activity_filter:
-                                    params["activityFilter"] = str(activity_filter)
+                                params["activityFilter"] = easyiq_activity_filter(activity_filter)
 
                                 events_resp = easyiq_session.get(
                                     EASYIQ_SKOLEPORTAL_API + "/Calendar/CalendarGetWeekplanEvents",
@@ -1477,6 +1515,11 @@ class Client:
                                                 or raw_events.get("WeekPlan")
                                                 or []
                                             )
+                                        _LOGGER.debug(
+                                            "EasyIQ Skoleportal summary for %s week %s (activityFilter=%s): %s",
+                                            first_name, week, params["activityFilter"],
+                                            summarize_weekplan_items(events_list),
+                                        )
                                     except Exception as json_e:
                                         _LOGGER.debug("Could not parse events JSON for %s: %s (text: %r)", first_name, json_e, events_resp.text[:200])
                                 else:
